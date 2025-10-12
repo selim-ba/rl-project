@@ -6,7 +6,7 @@
 
 # 1 - Deep Q-Learning
 
-| Resource | Type | Comment |
+| Name | Type | Comment |
 |------------|------------|------------|
 | Playing Atari with Deep Reinforcement Learning   | [Article](https://arxiv.org/abs/1312.5602)   | NIPS Deep Learning Workshop 2013 |
 | Playing Atari with Deep Reinforcement Learning (Paper explained)   | [Video](https://www.youtube.com/watch?v=rFwQDDbYTm4)   | 0h40 |
