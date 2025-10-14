@@ -4,7 +4,7 @@
 - [Gym Atari (ale-py) Doc](https://ale.farama.org/environments/)
 - [Breakout (ale-py)](https://ale.farama.org/environments/breakout/)
 
-# 1 - Deep Q-Learning
+# 1 - Q-Learning / DQN
 
 | Name | Type | Comment |
 |------------|------------|------------|
@@ -16,3 +16,8 @@
 | PyTorch : RL (DQN) Tutorial | [Blog post](https://docs.pytorch.org/tutorials/intermediate/reinforcement_q_learning.html#dqn-algorithm) | NaN |
 | Steve Brunton's RL videos | [Youtube playlist](https://www.youtube.com/watch?v=0MNVhXEX9to&list=PLMrJAkhIeNNQe1JXNvaFvURxGY4gE9k74) | 8 videos (~3h) |
 
+
+# X - GRPO
+| Name | Type | Comment |
+|------------|------------|------------|
+| DeepSeek's GRPO - RL for LLMs  | [Article](https://www.youtube.com/watch?v=xT4jxQUl0X8)   | NaN |
