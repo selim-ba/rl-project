@@ -20,4 +20,4 @@
 # X - GRPO
 | Name | Type | Comment |
 |------------|------------|------------|
-| DeepSeek's GRPO - RL for LLMs  | [Article](https://www.youtube.com/watch?v=xT4jxQUl0X8)   | NaN |
+| DeepSeek's GRPO - RL for LLMs  | [Video](https://www.youtube.com/watch?v=xT4jxQUl0X8)   | NaN |
