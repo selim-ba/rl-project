@@ -14,6 +14,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 env = gym.make("CartPole-v1",render_mode="human")
+#env = gym.make("MountainCar-v0",render_mode="human")
 
 # set up matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
@@ -39,7 +40,7 @@ device = torch.device(
 
 
 # 1 - Replay Memory / Experience Replay
-# Note : RM stores the transitions that the agent obseves, allowing us to reuse this data later.
+# Note : RM stores the transitions that the agent observes, allowing us to reuse this data later.
 # By sampling from it randomly, the transitions that build up a batch are decorrelated.
 # It has been shown that this greatly stabilizes and improves the DQN training procedure.
 
@@ -56,13 +57,13 @@ class ReplayMemory(object):
     def __init__(self,capacity):
         self.memory = deque([],maxlen=capacity)
         #file doublement chaine
-        #maxlen=capacity : Si la memoire est pleine, les ancienens transitions sont automatiquements supprimées lorsque de nouvelle sont ajoutées
+        #maxlen=capacity : Si la memoire est pleine, les anciennes transitions sont automatiquements supprimées lorsque de nouvelle sont ajoutées
         #capacity : taille du buffer
 
     def push(self,*args):
         """Save a transition"""
         self.memory.append(Transition(*args))
-        # on crée un isntance de Transition() à partir dse arguments fournis, puis on l'ajoute à la mémoire
+        # on crée un instance de Transition() à partir dse arguments fournis, puis on l'ajoute à la mémoire
 
     def sample(self,batch_size):
         return random.sample(self.memory,batch_size)
@@ -132,7 +133,7 @@ steps_done = 0
 #pour compter le nombre d'actions déjà effectuées par l'agent
 # utilisé pour faire décroître progressivement la proba d'exploration epsilon (epsilon-greedy)
 
-# select_action() will select ana ction according to an epsilon greedy policy
+# select_action() will select an action according to an epsilon greedy policy
 # We'll sometimes use our model for choosing the action, and sometimes, we'll just sample one uniformly.
 # The probability of choosing a random action will start at EPS_START and will decay exponentially towards EPS_END
 # EPS_DECAY controls the rate of the decay
@@ -144,6 +145,7 @@ def select_action(state):
     #calcul du seuil epsilon : formule du décroissement exponentiel de epsilon
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
         math.exp(-1. * steps_done / EPS_DECAY)
+    #print(f"EPS_START : {EPS_START} | eps_therhsold : {eps_threshold} | EPS_END : {EPS_END}")
     # plus le temps passe plus epsilon tend vers EPS_END
     # moins de hasard avec le temps -> l'agent devient plus intelligent/confiant dans sa politique de choix d'action
     
@@ -195,8 +197,8 @@ def plot_durations(show_result=False):
 # 4 - Training loop
 # optimize_model() performs a single step of the optimizaiton
 # it first samples a batch, concatenates all the tensors into a single one
-# computes Q(s_t,a_t) and V(s_t+1) = max_aQ(s_t+1,a), and combines them intou our loss
-# by definition : V(s)=0 if s i a terminal state.
+# computes Q(s_t,a_t) and V(s_t+1) = max_aQ(s_t+1,a), and combines them into our loss
+# by definition : V(s)=0 if s is a terminal state.
 # We also use a target network to compute V(s_t+1) for added stability
 # The target network is updated at every with a soft update controlled by TAU
 
@@ -237,6 +239,23 @@ def optimize_model():
     criterion = nn.SmoothL1Loss()
     loss = criterion(state_action_values,expected_state_action_values.unsqueeze(1))
 
+    ################# Test affichage 
+    with torch.no_grad():
+        # Moyenne absolue des différences entre policy et target sur le batch
+        q_policy_all = policy_net(state_batch)
+        q_target_all = target_net(non_final_next_states)
+        diff_mean = torch.abs(q_policy_all.mean(dim=0) - q_target_all.mean(dim=0)).mean().item()
+        print("---- OPTIMIZE STEP ----")
+        print(f"Q_policy (moyenne par action) | Q(s,a) pour chaque action | Prediction actuelle : {q_policy_all.mean(dim=0).cpu().numpy()}") # sortie moyenne du reseau principal sur le batch
+        print(f"Q_target (moyenne par action) | Q(s',a) pour chaque action | estimation des prochaines valeurs : {q_target_all.mean(dim=0).cpu().numpy()}") # sortie moyenne du reseau cible
+        print(f"Écart moyen |Q_policy - Q_target| : {diff_mean:.6f}")
+        #print(f"state_action_values | Q(s,action_effective) | valeur utilisee dans la loss : {state_action_values}")
+        print(f"next_state_values (moyenne) | max_a Q(s'a) | meilleure valeur future : {next_state_values.mean().item():.4f}")
+        print(f"expected_state_action_values (moyenne) | cible = r + y*max(Q_target) | ce que le policy_net doit apprendre : {expected_state_action_values.mean().item():.4f}")
+        print(f"Loss | SmoothL1(Q_policy,y) | erreur d'apprentissage : {loss.item():.6f}")
+        print("------------------------\n")
+
+
     # Optimize the model
     optimizer.zero_grad()
     loss.backward()
@@ -246,19 +265,22 @@ def optimize_model():
 
 # Main Training Loop
 if torch.cuda.is_available() or torch.backends.mps.is_available():
-    num_episodes = 500
+    num_episodes = 600
 else:
     num_episodes = 50
 
 for i_episode in range(num_episodes):
     # Initialize the environemnt and get its state
     state, info = env.reset()
+    #print(state[0][0])
     state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+    #print(f"Position : {state[0][0]:.4f} | Vitesse (m/s) {state[0][1]:.4f} | Angle : {state[0][2]:.4f} | Vit. angulaire : {state[0][3]:.4f}")
 
     for t in count():
         action = select_action(state)
         observation, reward, terminated, truncated, _ = env.step(action.item())
         reward = torch.tensor([reward],device=device)
+        #print(reward,terminated,truncated)
         done = terminated or truncated
 
         if terminated:
