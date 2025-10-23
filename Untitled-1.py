@@ -35,7 +35,7 @@ except ImportError:
 # =====================================================
 def make_env(seed=0, render_mode=None, stack=4):
     env = gym.make("ALE/Breakout-v5", render_mode=render_mode, frameskip=1)
-    env = AtariPreprocessing(
+    env = AtariPreprocessing(               #on preprocess avec l'environnement atari de base --> 84*84 en noir et blanc
         env,
         grayscale_obs=True,
         scale_obs=False,
@@ -44,24 +44,24 @@ def make_env(seed=0, render_mode=None, stack=4):
         noop_max=30,
         terminal_on_life_loss=False,
     )
-    env = FrameStack(env, num_stack=stack)
+    env = FrameStack(env, num_stack=stack)      #fais des suites de 4 images consécutives pour que le DQN "puisse voir le temps"
     env.reset(seed=seed)
-    return env
+    return env              #au final on a un np.array(4,84,84)
 
 
 # =====================================================
 # === RESEAU DQN ======================================
 # =====================================================
-class DQN(nn.Module):
-    def __init__(self, n_actions):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(4, 32, 8, stride=4), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
-            nn.Flatten(),
+class DQN(nn.Module):  #DQN, réseau de neuronne, but approcher la fonction Q(s,a) : récompense attendue si je fais l'action
+    def __init__(self, n_actions):          # a à l'état s. L'entrée s est l'image (4,84,84)
+        super().__init__()                  # sortie = un vecteur avec les 4 actions possibles et la fonction Q(s,a) approximée
+        self.net = nn.Sequential(   #architecture du réseau
+            nn.Conv2d(4, 32, 8, stride=4), nn.ReLU(), #(4,84,84) --> (32,20,20) détecte large motifs
+            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(), #(32,20,20) --> (64,9,9) --> détecte combinaisons plus complexe
+            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(), #(64,9,9) --> (64,7,7) --> encore plus affiner
+            nn.Flatten(),           # applatissement (64,7,7) --> (3136)
             nn.Linear(64*7*7, 512), nn.ReLU(),
-            nn.Linear(512, n_actions)
+            nn.Linear(512, n_actions) # produit une Q valeur par actions possibles.
         )
 
     def forward(self, x_uint8):
@@ -228,14 +228,16 @@ def train(
 
 
 # =====================================================
-# === LANCEMENT DIRECT (dans Jupyter) ================
+# === LANCEMENT DIRECT  ================
 # =====================================================
 train(
-    steps=300_000,        # plus long run
-    start_learn=10_000,   # apprend plus tôt
-    eps_decay=300_000,    # ε diminue plus vite
-    eval_every=25_000,
-    lr=1e-4,
+    steps=50_000,
+    # epsilon
+    eps_start=0.9, eps_end=0.05, eps_decay=11_250,  # ≈ 50k / 4.442
+    # pour aller vite/stable en court run
+    warmup=2_000, start_learn=2_000, learn_every=1,
+    eval_every=10_000, target_sync=5_000,
+    replay_size=100_000, batch=32, lr=2e-4,
 )
 
 
