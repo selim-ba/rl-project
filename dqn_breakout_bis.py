@@ -16,11 +16,16 @@ import random
 import os
 import time
 
-PLOT_DIR = "dqn_plot"
+PLOT_DIR = "dqn_plot_bis"
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-VIDEO_DIR = "dqn_videos"
+VIDEO_DIR = "dqn_videos_bis"
 os.makedirs(VIDEO_DIR, exist_ok=True)
+VIDEO_RUN_ID = time.strftime("%Y%m%d-%H%M%S")
+eval_capture_idx = 0
+
+CHECKPOINT_DIR = "dqn_checkpoint_bis"
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 # Variables
 ENV_ID = "ALE/Breakout-v5"
@@ -31,7 +36,7 @@ batch_size = 32
 buffer_capacity = 250_000 # instead of 1M          
 train_freq = 4                     # optimize every 4 env steps
 target_update_freq = 10_000        # in OPTIMIZER STEPS (not env steps)
-max_frames = 2_500_000 #instead of 10M
+max_frames = 1_000_000 #instead of 10M
 learning_starts = 50_000 #instead of 50k
 
 # -- logging containers ----
@@ -251,12 +256,6 @@ def evaluate(n_episodes=5, eps_eval=0.05):
     for _ in range(n_episodes):
         ob, _ = eval_env.reset()
 
-        # 1..30 no-ops (random)
-        for __ in range(np.random.randint(1, 31)):
-            ob, _, t, tr, _ = eval_env.step(0)
-            if t or tr:
-                ob, _ = eval_env.reset()
-
         # FIRE once for Breakout
         ob = np.array(fire(eval_env, np.array(ob)))
 
@@ -289,13 +288,21 @@ def init_kaiming(m):
 policy_net.apply(init_kaiming)
 target_net.load_state_dict(policy_net.state_dict())
 
-def _save_plot(x, y, title, xlabel, ylabel, filename, extra_curves=None):
-    """
-    extra_curves: list of tuples [(x2, y2, label2), ...]
-    """
+def _save_plot(x, y, title, xlabel, ylabel, filename, extra_curves=None, ylog10=False):
     plt.figure()
     plt.title(title)
     plt.xlabel(xlabel); plt.ylabel(ylabel)
+
+    if ylog10:
+        # Replace nonpositive values with a tiny epsilon to make log10 safe.
+        eps = 1e-8
+        y = [max(float(v), eps) for v in (y or [])]
+        if extra_curves:
+            extra_curves = [
+                (xc, [max(float(v), eps) for v in (yc or [])], lab)
+                for (xc, yc, lab) in extra_curves
+            ]
+        plt.yscale("log", base=10)
     if x is not None and y is not None and len(x) == len(y) and len(x) > 0:
         plt.plot(x, y, label="value")
     if extra_curves:
@@ -309,15 +316,29 @@ def _save_plot(x, y, title, xlabel, ylabel, filename, extra_curves=None):
     plt.savefig(path, dpi=150)
     plt.close()
 
+
 def save_all_plots():
     # 1) Training episode return (+ 100-epi moving avg)
     ma = moving_average(ep_returns, 100) if len(ep_returns) > 0 else []
     x_ma = ep_frames[-len(ma):] if len(ma) > 0 else []
-    _save_plot(ep_frames, ep_returns,
-               "Training Episode Return vs Frames",
-               "Frames", "Episode Return (clipped)",
-               "train_return.png",
-               extra_curves=[(x_ma, ma, "moving avg (100 eps)")] if len(ma) > 0 else None)
+
+    plt.figure()
+    plt.title("Training Episode Return vs Frames")
+    plt.xlabel("Frames")
+    plt.ylabel("Episode Return (clipped)")
+
+    # episode returns
+    if len(ep_frames) > 0:
+        plt.scatter(ep_frames, ep_returns, s=12, color="tab:blue", alpha=0.6, label="Episode returns")
+
+    # moving average
+    if len(ma) > 0:
+        plt.plot(x_ma, ma, color="tab:red", linewidth=2, label="Moving avg (100 eps)")
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOT_DIR, "train_return.png"), dpi=150)
+    plt.close()
 
     # 2) Eval score vs frames
     _save_plot(eval_frames, eval_scores,
@@ -325,15 +346,16 @@ def save_all_plots():
                "Frames", "Eval mean score",
                "eval_score.png")
 
-    # 3) TD loss vs optimizer steps (+ moving avg 1k)
+    # 3) TD loss vs optimizer steps (+ moving avg 1k) — on log10 y-axis
     loss_ma = moving_average(loss_values, 1000) if len(loss_values) > 0 else []
     x_ma = loss_steps[-len(loss_ma):] if len(loss_ma) > 0 else []
     _save_plot(loss_steps, loss_values,
-               "TD Loss (Huber) vs Optimizer Steps",
-               "Optimizer Steps", "Huber Loss",
-               "loss.png",
-               extra_curves=[(x_ma, loss_ma, "moving avg (1k)")] if len(loss_ma) > 0 else None)
-
+            "TD Loss (Huber) vs Optimizer Steps",
+            "Optimizer Steps", "Huber Loss (log10)",
+            "loss.png",
+            extra_curves=[(x_ma, loss_ma, "moving avg (1k)")] if len(loss_ma) > 0 else None,
+            ylog10=True)
+    
     # 4) Epsilon vs frames
     _save_plot(eps_frames, eps_values,
                "Epsilon vs Frames",
@@ -345,33 +367,58 @@ def save_all_plots():
                "Replay Buffer Size vs Frames",
                "Frames", "Buffer size",
                "buffer_size.png")
-def make_record_env():
+    
+class NoAutoFireOnReset(gym.Wrapper):
+    """
+    Ensures that reset() never auto-issues FIRE inside wrappers.
+    We simply call the underlying reset and return immediately,
+    leaving NOOPs and FIRE entirely to the caller / policy.
+    """
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        return obs, info
+
+    
+def make_record_env(name_prefix):
     e = gym.make(id=ENV_ID, render_mode="rgb_array", frameskip=1)
     e = AtariPreprocessing(
-        e, noop_max=30, frame_skip=4, screen_size=84,
-        grayscale_obs=True, scale_obs=False, terminal_on_life_loss=False
+        e,
+        noop_max=0,                  # we will do NOOPs ourselves so they get recorded
+        frame_skip=4,
+        screen_size=84,
+        grayscale_obs=True,
+        scale_obs=False,
+        terminal_on_life_loss=False
     )
     e = FrameStack(e, 4)
-    # Start a recording every 2000 steps inside THIS env; record 2000 steps each time.
+    e = NoAutoFireOnReset(e)         # <<< ensure reset() doesn’t auto-FIRE
     e = RecordVideo(
         e,
         video_folder=VIDEO_DIR,
-        step_trigger=lambda step: step % 2000 == 0,
+        episode_trigger=lambda ep: True,  # <<< record from reset()
         video_length=2000,
-        name_prefix="eval"
+        name_prefix=name_prefix
     )
     return e
 
+
+
 @torch.no_grad()
 def record_eval_clip(policy_net, eps_eval=0.05, max_steps=6000):
-    rec_env = make_record_env()
+    global eval_capture_idx
+    prefix = f"eval_{VIDEO_RUN_ID}_{eval_capture_idx:03d}"
+    rec_env = make_record_env(prefix)
+    eval_capture_idx += 1
+
     ob, _ = rec_env.reset()
 
-    # random 1..30 no-ops, then FIRE
+    # Record 1..30 NOOPs so the video shows the paddle + ball BEFORE launch
     for _ in range(np.random.randint(1, 31)):
-        ob, _, t, tr, _ = rec_env.step(0)
+        ob, _, t, tr, _ = rec_env.step(0)  # this is now recorded
         if t or tr:
             ob, _ = rec_env.reset()
+
+    # Launch the ball with FIRE (also recorded)
     ob = np.array(fire(rec_env, np.array(ob)))
 
     ret, done, steps = 0.0, False, 0
@@ -385,6 +432,7 @@ def record_eval_clip(policy_net, eps_eval=0.05, max_steps=6000):
 
     rec_env.close()
     print(f"[RECORDED EVAL] return={ret:.1f} (clips in {VIDEO_DIR}/)")
+
 
 # Track best/worst episode
 best_return = float("-inf")
@@ -491,13 +539,19 @@ while frame < max_frames:
         record_eval_clip(policy_net,eps_eval=0.05)
         print(f"[EVAL @ {frame}] mean score = {mean_eval:.2f} ± {std_eval:.2f}")
 
+        ckpt_path = os.path.join(
+            CHECKPOINT_DIR,
+            f"ckpt_{VIDEO_RUN_ID}_frame-{frame:07d}_opt-{optimizer_steps:06d}.pt"
+        )
+
         torch.save({
             "policy": policy_net.state_dict(),
             "target": target_net.state_dict(),
             "opt": optimizer.state_dict(),
             "frame": frame,
             "optimizer_steps": optimizer_steps,
-        }, f"checkpoint_{frame}.pt")
+        }, ckpt_path)
+        print(f"[CHECKPOINT] saved {ckpt_path}")
 
 total_elapsed = time.time() - start_time
 avg_fps = frame / total_elapsed if total_elapsed > 0 else 0.0
