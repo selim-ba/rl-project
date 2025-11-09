@@ -1,0 +1,336 @@
+# ============================================================
+# REINFORCE (Policy Gradient) sur Breakout – avec graphiques + sauvegarde plots
+# ============================================================
+
+import os, math, random
+import numpy as np
+from collections import deque
+from tqdm import trange
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+
+import matplotlib.pyplot as plt
+
+import gymnasium as gym
+from gymnasium.wrappers import AtariPreprocessing
+try:
+    from gymnasium.wrappers import FrameStack
+except ImportError:
+    from gymnasium.wrappers.frame_stack import FrameStack
+
+
+# ===================== Wrapper: FireReset =====================
+class FireReset(gym.Wrapper):
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        obs, _, term, trunc, _ = self.env.step(1)
+        if term or trunc:
+            obs, info = self.env.reset(**kwargs)
+        obs, _, term, trunc, _ = self.env.step(1)
+        if term or trunc:
+            obs, info = self.env.reset(**kwargs)
+        return obs, info
+
+
+# ===================== Environnement =====================
+def make_env(seed=0, render_mode=None, stack=4, fire_reset=True):
+    env = gym.make("ALE/Breakout-v5", render_mode=render_mode, frameskip=1)
+    env = AtariPreprocessing(
+        env,
+        grayscale_obs=True,
+        scale_obs=False,
+        frame_skip=4,
+        screen_size=84,
+        noop_max=30,
+        terminal_on_life_loss=True,
+    )
+    env = FrameStack(env, num_stack=stack)
+    if fire_reset:
+        env = FireReset(env)
+    env.reset(seed=seed)
+    return env
+
+
+# ===================== Politique CNN =====================
+class PolicyCNN(nn.Module):
+    def __init__(self, n_actions: int, use_baseline: bool = True):
+        super().__init__()
+        self.use_baseline = use_baseline
+        self.conv = nn.Sequential(
+            nn.Conv2d(4, 32, kernel_size=8, stride=4), nn.ReLU(inplace=True),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2), nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1), nn.ReLU(inplace=True),
+            nn.Flatten()
+        )
+        self.fc = nn.Sequential(nn.Linear(64*7*7, 512), nn.ReLU(inplace=True))
+        self.pi_head = nn.Linear(512, n_actions)
+        if self.use_baseline:
+            self.v_head = nn.Linear(512, 1)
+
+    def forward(self, x_uint8):
+        x = x_uint8.float() / 255.0
+        z = self.fc(self.conv(x))
+        logits = self.pi_head(z)
+        value = self.v_head(z).squeeze(-1) if self.use_baseline else None
+        return logits, value
+
+    def act(self, state_uint8, device, greedy: bool = False):
+        s = torch.tensor(state_uint8[None], dtype=torch.uint8, device=device)
+        logits, value = self.forward(s)
+        if greedy:
+            a = torch.argmax(logits, dim=-1)
+            logp_all = F.log_softmax(logits, dim=-1)
+            logp = logp_all.gather(1, a.view(-1,1)).squeeze(1)
+            entropy = torch.zeros_like(logp)
+        else:
+            dist = torch.distributions.Categorical(logits=logits)
+            a = dist.sample()
+            logp = dist.log_prob(a)
+            entropy = dist.entropy()
+        return int(a.item()), logp.squeeze(0), (value.squeeze(0) if value is not None else None), entropy.squeeze(0)
+
+
+# ===================== Outils RL =====================
+def discount_returns(rewards, gamma: float):
+    G = 0.0
+    out = []
+    for r in reversed(rewards):
+        G = r + gamma * G
+        out.append(G)
+    out.reverse()
+    return np.array(out, dtype=np.float32)
+
+def evaluate(env_eval, policy: PolicyCNN, episodes=5, greedy=True, max_steps=50_000, kick_fire=False):
+    device = next(policy.parameters()).device
+    scores = []
+    for _ in range(episodes):
+        s, _ = env_eval.reset()
+        s = np.array(s)
+        ep_ret, done, steps = 0.0, False, 0
+        while not done and steps < max_steps:
+            with torch.no_grad():
+                a, _, _, _ = policy.act(s, device, greedy=greedy)
+            s2, r, term, trunc, _ = env_eval.step(a)
+            s = np.array(s2)
+            ep_ret += float(r)
+            done = term or trunc
+            steps += 1
+        scores.append(ep_ret)
+    return float(np.mean(scores)), float(np.std(scores))
+
+
+# ===================== Entraînement REINFORCE =====================
+def train_reinforce(
+    steps=300_000,
+    gamma=0.99,
+    lr=1e-4,
+    entropy_coef=0.02,
+    value_coef=0.5,
+    reward_clip=True,
+    use_baseline=True,
+    batch_episodes=2,
+    eval_every=25_000,
+    eval_episodes=5,
+    seed=0,
+    cpu=True,
+    ckpt_best="reinforce_breakout_best.pt",
+    ckpt_last="reinforce_breakout_last.pt",
+):
+    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    device = "cuda" if torch.cuda.is_available() and not cpu else "cpu"
+    print("Device:", device)
+
+    env = make_env(seed=seed, render_mode=None, fire_reset=True)
+    env_eval = make_env(seed=seed+1, render_mode=None, fire_reset=True)
+
+    nA = env.action_space.n
+    policy = PolicyCNN(n_actions=nA, use_baseline=use_baseline).to(device)
+    opt = optim.Adam(policy.parameters(), lr=lr)
+
+    total_steps, best_eval = 0, -1e9
+    pbar = trange(10**9, desc="Train (episodes)", dynamic_ncols=True)
+    logs = {k: [] for k in ["step","loss","policy_loss","value_loss","entropy",
+                            "episode_step","episode_return","episode_len",
+                            "eval_step","eval_mean","eval_std"]}
+    next_eval = eval_every
+
+    while total_steps < steps:
+        batch_logp, batch_R, batch_ent, batch_V = [], [], [], []
+        ep_count = 0
+
+        while ep_count < batch_episodes and total_steps < steps:
+            s, _ = env.reset(); s = np.array(s)
+            logps, rewards, ents, values = [], [], [], []
+            done = False; ep_return, ep_len = 0.0, 0
+
+            while not done:
+                a, logp, v, ent = policy.act(s, device, greedy=False)
+                s2, r, term, trunc, _ = env.step(a); s2 = np.array(s2)
+                r_store = float(np.sign(r)) if reward_clip else float(r)
+                ep_return += r_store; ep_len += 1
+                rewards.append(r_store); logps.append(logp); ents.append(ent)
+                if use_baseline: values.append(v)
+                s = s2
+                total_steps += 1
+                done = term or trunc or (total_steps >= steps)
+
+            G = discount_returns(rewards, gamma)
+            batch_R.append(torch.tensor(G, dtype=torch.float32, device=device))
+            batch_logp.append(torch.stack(logps))
+            batch_ent.append(torch.stack(ents))
+            if use_baseline: batch_V.append(torch.stack(values))
+
+            logs["episode_step"].append(total_steps)
+            logs["episode_return"].append(ep_return)
+            logs["episode_len"].append(ep_len)
+            ep_count += 1
+
+        logp_cat, R_cat, ent_cat = torch.cat(batch_logp), torch.cat(batch_R), torch.cat(batch_ent)
+        if use_baseline:
+            V_cat = torch.cat(batch_V)
+            adv = R_cat - V_cat.detach()
+            adv = (adv - adv.mean()) / (adv.std(unbiased=False) + 1e-8)
+            policy_loss = -(logp_cat * adv).mean()
+            value_loss  = F.mse_loss(V_cat, R_cat)
+            entropy_bonus = ent_cat.mean()
+            loss = policy_loss + value_coef * value_loss - entropy_coef * entropy_bonus
+        else:
+            Rn = (R_cat - R_cat.mean()) / (R_cat.std(unbiased=False) + 1e-8)
+            policy_loss = -(logp_cat * Rn).mean()
+            value_loss  = torch.tensor(0.0, device=device)
+            entropy_bonus = ent_cat.mean()
+            loss = policy_loss - entropy_coef * entropy_bonus
+
+        opt.zero_grad(set_to_none=True); loss.backward()
+        nn.utils.clip_grad_norm_(policy.parameters(), 10.0); opt.step()
+        pbar.set_description(f"steps={total_steps:,} loss={loss.item():.3f}")
+
+        logs["step"].append(total_steps)
+        logs["loss"].append(float(loss.item()))
+        logs["policy_loss"].append(float(policy_loss.item()))
+        logs["value_loss"].append(float(value_loss.item()) if isinstance(value_loss, torch.Tensor) else 0.0)
+        logs["entropy"].append(float(entropy_bonus.item()))
+
+        while total_steps >= next_eval or total_steps >= steps:
+            mean_score, std = evaluate(env_eval, policy, episodes=eval_episodes, greedy=True)
+            pbar.write(f"[Eval] steps={total_steps:,} | score={mean_score:.2f} ± {std:.2f}")
+            torch.save(policy.state_dict(), ckpt_last)
+            if mean_score > best_eval:
+                best_eval = mean_score
+                torch.save(policy.state_dict(), ckpt_best)
+            logs["eval_step"].append(total_steps)
+            logs["eval_mean"].append(mean_score)
+            logs["eval_std"].append(std)
+            next_eval += eval_every
+            if total_steps >= steps:
+                break
+
+    env.close(); env_eval.close()
+    print(f"Training finished. Best eval score={best_eval:.2f}")
+    return policy, logs
+
+
+# ===================== Helpers graphiques =====================
+def _moving_average(x, w=5):
+    if len(x) == 0: return np.array([])
+    w = max(1, int(w))
+    c = np.convolve(x, np.ones(w)/w, mode="valid")
+    pad = [np.nan]*(len(x)-len(c))
+    return np.array(list(pad) + list(c))
+
+def plot_logs(logs, save_dir=None):
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+
+    def _save_or_show(name):
+        if save_dir:
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f"{name}.png"))
+            plt.close()
+        else:
+            plt.show()
+
+    # 1) Score d'évaluation
+    if len(logs["eval_step"]) > 0:
+        steps = np.array(logs["eval_step"]); mean  = np.array(logs["eval_mean"]); std   = np.array(logs["eval_std"])
+        plt.figure(figsize=(7,4))
+        plt.plot(steps, mean, '-o', label="Score moyen (éval)")
+        plt.fill_between(steps, mean-std, mean+std, alpha=0.2, label="± écart-type")
+        plt.xlabel("Steps d'entraînement"); plt.ylabel("Score (évaluation)")
+        plt.title("Évolution du score (évaluation)")
+        plt.legend(); plt.grid(True)
+        _save_or_show("eval_score")
+
+    # 2) Loss totale
+    if len(logs["step"]) > 0:
+        s = np.array(logs["step"]); L = np.array(logs["loss"])
+        plt.figure(figsize=(7,4))
+        plt.plot(s, L, label="Loss totale")
+        plt.plot(s, _moving_average(L, 10), label="Loss (moy. mob.)")
+        plt.xlabel("Steps"); plt.ylabel("Loss"); plt.title("Loss totale")
+        plt.legend(); plt.grid(True)
+        _save_or_show("loss_total")
+
+        # Policy / Value loss
+        Lp= np.array(logs["policy_loss"]); Lv= np.array(logs["value_loss"])
+        plt.figure(figsize=(7,4))
+        plt.plot(s, Lp, label="Policy loss")
+        plt.plot(s, _moving_average(Lp, 10), label="Policy loss (moy. mob.)")
+        if not np.all(Lv==0):
+            plt.plot(s, Lv, label="Value loss")
+            plt.plot(s, _moving_average(Lv, 10), label="Value loss (moy. mob.)")
+        plt.xlabel("Steps"); plt.ylabel("Loss"); plt.title("Policy/Value loss")
+        plt.legend(); plt.grid(True)
+        _save_or_show("loss_policy_value")
+
+    # 3) Entropie
+    if len(logs["entropy"]) > 0:
+        s = np.array(logs["step"]); H = np.array(logs["entropy"])
+        plt.figure(figsize=(7,4))
+        plt.plot(s, H, label="Entropie")
+        plt.plot(s, _moving_average(H, 10), label="Entropie (moy. mob.)")
+        plt.xlabel("Steps"); plt.ylabel("Entropie"); plt.title("Évolution de l'entropie")
+        plt.legend(); plt.grid(True)
+        _save_or_show("entropy")
+
+    # 4) Returns par épisode
+    if len(logs["episode_step"]) > 0:
+        es = np.array(logs["episode_step"]); er = np.array(logs["episode_return"])
+        plt.figure(figsize=(7,4))
+        plt.plot(es, er, '.', alpha=0.5, label="Return épisode (collecte)")
+        ma = _moving_average(er, 20)
+        if len(ma)>0: plt.plot(es, ma, label="Return (moy. mobile)")
+        plt.xlabel("Steps"); plt.ylabel("Return épisode (clippé)")
+        plt.title("Retour par épisode (collecte)")
+        plt.legend(); plt.grid(True)
+        _save_or_show("returns_episode")
+
+
+# ===================== Lancement =====================
+if __name__ == "__main__":
+    policy, logs = train_reinforce(
+        steps=100_000,
+        gamma=0.99,
+        lr=1e-4,
+        entropy_coef=0.02,
+        value_coef=0.5,
+        reward_clip=True,
+        use_baseline=True,
+        batch_episodes=2,
+        eval_every=25_000,
+        eval_episodes=5,
+        seed=0,
+        cpu=True
+    )
+
+    plot_logs(logs, save_dir="plots_reinforce")
+
+
+
+
+
+
+
