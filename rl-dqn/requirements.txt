@@ -1,0 +1,26 @@
+# Deep Q-Network (DQN) for Atari - Requirements
+# Compatible with macOS (Apple Silicon M4 Pro), Linux, and Windows
+
+# Core Deep Learning
+torch>=2.1.0,<2.5.0          # PyTorch with MPS support for Apple Silicon
+numpy>=1.24.0,<2.0.0         # Numerical computing
+
+# Reinforcement Learning
+gymnasium>=1.0.0,<2.0.0      # RL environment interface (successor to gym)
+ale-py>=0.8.0,<0.12.0        # Arcade Learning Environment for Atari
+
+# Computer Vision & Image Processing
+opencv-python>=4.8.0,<5.0.0  # Image preprocessing (resize, color conversion)
+
+# Configuration & Logging
+pyyaml>=6.0.0,<7.0.0         # YAML config parsing
+pandas>=2.0.0,<3.0.0         # Data manipulation for logging
+matplotlib>=3.7.0,<4.0.0     # Plotting training curves
+seaborn>=0.12.0,<1.0.0       # Better plot styling
+
+# Optional: Video Recording
+imageio>=2.31.0              # Video I/O (used by Gymnasium's RecordVideo)
+imageio-ffmpeg>=0.4.9        # FFmpeg wrapper for video encoding
+
+# Optional: Better Progress Bars
+tqdm>=4.65.0                 # Progress bars (if you add them)
