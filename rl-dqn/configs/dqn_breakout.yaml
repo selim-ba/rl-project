@@ -1,20 +1,20 @@
-# configs/dqn_breakout.yaml
-# DQN configuration for Breakout (Nature paper settings)
+# configs/dqn_pong.yaml (last used config : 27/11/2025)
+# DQN configuration for Pong (Nature paper settings)
 
-env_id: ALE/Breakout-v5
+env_id: ALE/Pong-v5  
 seed: 42
 
 train:
-  total_steps:  500000      # 1 step = 4 frames, Original : 50M frames (12.5M steps)
+  total_steps:   24000000      # 1 step = 4 frames, Original : 50M frames (12.5M steps)
   eval_interval: 250000       # Evaluate every 250K steps
-  eval_episodes: 30           # Number of eval episodes
+  eval_episodes: 10          # Number of eval episodes
   save_interval: 250000       # Save checkpoint every 250K steps
 
 agent:
   # Replay buffer
-  replay_capacity: 200000     # 200k transitions (Instead of 1M transitions)
+  replay_capacity: 500000     # 200k transitions (Instead of 1M transitions)
   replay_warmup: 50000        # Start training after 50k steps
-  batch_size: 32              # Mini-batch size for SGD updates
+  batch_size: 64              # Mini-batch size for SGD updates
   
   # Training
   gamma: 0.99                # Discount factor
@@ -24,7 +24,7 @@ agent:
   optimize_every: 4          # One gradient update every 4 steps
   target_update_interval: 10000     # Sync target network every 10k updates
   huber_delta: 1.0           # Huber loss clipping parameter
-  max_grad_norm: null        # No gradient clipping (null means None)
+  max_grad_norm: 10.0        # No gradient clipping (null means None)
 
 exploration:
   eps_start: 1.0             # Initial epsilon (fully random actions)
@@ -32,4 +32,4 @@ exploration:
   eps_anneal_frames: 1000000 # Anneal over 1M steps (4M frames)
 
 eval:
-  epsilon: 0.05              # Small epsilon during evaluation
+  epsilon: 0.05             # Small epsilon during evaluation
