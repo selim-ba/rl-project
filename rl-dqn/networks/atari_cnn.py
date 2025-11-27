@@ -1,10 +1,11 @@
-# networks/atari_cnn.py
+# networks/atari_cnn.py (last update : 27/11/2025)
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-# Q-Network (based on the Nature paper)
+# Q-Network
 class QNetwork(nn.Module):
     """
         CNN du Deep Q-Network décrit dans https://www.nature.com/articles/nature14236
@@ -22,7 +23,6 @@ class QNetwork(nn.Module):
         self.fcn2 = nn.Linear(in_features=512,out_features=num_actions)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Accept uint8 or float in [0,255]; scale to [0,1] once here
         if x.dtype == torch.uint8:
             x = x.float().div_(255.0)
         elif x.dtype.is_floating_point and x.max() > 1:
