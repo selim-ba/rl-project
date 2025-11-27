@@ -1,4 +1,5 @@
-# utils/plot_training.py - ENHANCED VERSION
+# utils/plot_training.py  (last update : 27/11/2025)
+
 from __future__ import annotations
 import os
 import sys
@@ -7,9 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Optional, List
 
-# Use a clean, publication-ready style
-plt.style.use("seaborn-v0_8-whitegrid")
 
+plt.style.use("seaborn-v0_8-whitegrid")
 
 def exponential_moving_average(series: pd.Series, alpha: float = 0.05) -> pd.Series:
     """
@@ -72,22 +72,19 @@ def plot_metric_with_smoothing(
         print(f"⚠️  Skipping {filename}: missing columns {x_col} or {y_col}")
         return
     
-    # Extract and clean data
+
     sub = df[[x_col, y_col]].dropna()
     if sub.empty:
         print(f"⚠️  Skipping {filename}: no data after dropping NaN")
         return
     
-    # Sort and aggregate duplicates
     sub = sub.sort_values(x_col).groupby(x_col, as_index=False)[y_col].mean()
     
     xs = sub[x_col].to_numpy()
     ys_raw = sub[y_col].to_numpy()
     
-    # Create figure
     fig, ax = plt.subplots(figsize=(8, 5))
     
-    # Raw data (very transparent)
     if show_raw and len(xs) > 1:
         ax.plot(xs, ys_raw, lw=0.5, alpha=0.12, color="0.5", label="Raw", zorder=1)
     
@@ -98,16 +95,12 @@ def plot_metric_with_smoothing(
         ax.plot(xs, ema, lw=2.0 + i*0.5, color=colors[i], 
                 label=f"EMA (α={alpha})", zorder=2+i, alpha=0.9)
     
-    # Labels and title
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel(ylabel, fontsize=12)
     ax.set_title(title, fontsize=13, pad=10)
-    
-    # Legend
     ax.legend(frameon=True, framealpha=0.95, loc="best", fontsize=10)
     ax.grid(True, alpha=0.3, linewidth=0.5)
     
-    # Environment-specific y-axis scaling
     _maybe_set_atari_ylim(env_id, y_col)
     
     plt.tight_layout()
@@ -210,9 +203,8 @@ def plot_evaluation_performance(df: pd.DataFrame, out_dir: str, env_id: Optional
         # Approximate std as half the range
         std = (sub["eval_return_max"] - sub["eval_return_min"]).to_numpy() / 2.0
     
-    # Create plot
     fig, ax = plt.subplots(figsize=(8, 5))
-    color = "#1f77b4"  # Tab blue
+    color = "#1f77b4" 
     
     ax.plot(steps, mean, lw=2.5, color=color, label="Mean eval return", marker='o', 
             markersize=4, alpha=0.9)
@@ -328,7 +320,6 @@ def plot_training(csv_path: str, out_dir: Optional[str] = None,
     df = pd.read_csv(csv_path)
     print(f"\n📊 Loaded {len(df):,} rows from {csv_path}")
     
-    # Extract environment ID
     env_id = df["env_id"].iloc[0] if "env_id" in df.columns and len(df) else None
     if env_id:
         print(f"Environment: {env_id}")
@@ -336,7 +327,7 @@ def plot_training(csv_path: str, out_dir: Optional[str] = None,
     print("\nGenerating plots...")
     print("-" * 50)
     
-    # Training curves (CORRECTED: plot vs steps, not episodes!)
+    # Training curves 
     plot_metric_with_smoothing(
         df, "step", "episode_return",
         xlabel="Environment Steps",
@@ -386,16 +377,10 @@ def plot_training(csv_path: str, out_dir: Optional[str] = None,
         show_raw=True
     )
     
-    # Evaluation performance (already correct - no smoothing needed)
     plot_evaluation_performance(df, out_dir, env_id)
-    
-    # Additional diagnostics
     plot_epsilon_schedule(df, out_dir, env_id)
     plot_fps(df, out_dir, env_id)
-    
-    # Dashboard summary
     create_dashboard(df, out_dir, env_id)
-    
     print("-" * 50)
     print(f"✅ All plots saved to: {out_dir}\n")
 
