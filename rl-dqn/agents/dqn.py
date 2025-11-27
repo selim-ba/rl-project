@@ -1,33 +1,30 @@
-# agents/dqn.py
+# agents/dqn.py (last update by selim, 27/11/2025)
 
 import os
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from networks.atari_cnn import QNetwork
 from memory.replay_buffer import ReplayBuffer
 
-
 @dataclass
 class DQNConfig:
-    """Structured container of all DQN hyperparameters"""
-    # Environment
+    """DQN hyperparameters"""
+    # Env settings
     obs_shape: Tuple[int, int, int]  # (H,W,C) from env
     n_actions: int
-    device: str = (
-    "cuda" if torch.cuda.is_available() 
-    else "mps" if torch.backends.mps.is_available() 
-    else "cpu"
-    )
+    device: str = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
     # Replay buffer
-    replay_capacity: int = 1_000_000
+    replay_capacity: int = 500_000
     replay_warmup: int = 50_000
     batch_size: int = 32
 
-    # Training
+    # Training hyperparameters
     gamma: float = 0.99
     lr: float = 2.5e-4
     rmsprop_alpha: float = 0.95
@@ -37,10 +34,10 @@ class DQNConfig:
     huber_delta: float = 1.0
     max_grad_norm: Optional[float] = None
 
-    # Exploration
+    # Exploration parameters
     eps_start: float = 1.0
     eps_end: float = 0.1
-    eps_anneal_frames: int = 250_000
+    eps_anneal_frames: int = 1_000_000
     eval_epsilon: float = 0.05
 
 
@@ -48,10 +45,9 @@ class DQNAgent:
     def __init__(self, cfg: DQNConfig):
         self.cfg = cfg
         
-        # Create replay buffer (agent owns its memory)
         self.replay = ReplayBuffer(cfg.replay_capacity, cfg.obs_shape, cfg.device)
 
-        # Determine input channels robustly
+        # to determine input channels
         if cfg.obs_shape[-1] in (1, 3, 4):  # HWC
             C = cfg.obs_shape[-1]
         else:  # CHW
@@ -99,13 +95,15 @@ class DQNAgent:
         if x.shape[-1] in (1, 3, 4):  # Channel-last format detected
             x = x.permute(0, 3, 1, 2)
         
+        x = x.float() / 255.0 # we normalize pixel values
         return x
+
 
     @torch.no_grad()
     def act(self, obs, eval_mode: bool = False, epsilon: Optional[float] = None) -> int:
         x = self._to_tensor(obs)
 
-        # 1) Choix d'epsilon : paramètre > cfg.eval_epsilon > schedule
+        # choix d'epsilon
         if epsilon is not None:
             eps = float(epsilon)
         elif eval_mode:
@@ -113,7 +111,7 @@ class DQNAgent:
         else:
             eps = float(self._epsilon())
 
-        # 2) Epsilon-greedy (y compris en éval)
+        # Epsilon-greedy y compris en eval
         if torch.rand(1).item() < eps:
             return torch.randint(0, self.cfg.n_actions, ()).item()
 
@@ -130,7 +128,6 @@ class DQNAgent:
 
     def update(self) -> Dict[str, float]:
         """Perform one gradient update step"""
-        # Guard conditions
         if self.step_count < self.cfg.replay_warmup:
             return {}
         if self.step_count % self.cfg.optimize_every != 0:
@@ -180,7 +177,6 @@ class DQNAgent:
         return self.cfg.eps_start + (self.cfg.eps_end - self.cfg.eps_start) * (
             t / float(self.cfg.eps_anneal_frames)
         )
-
 
     def state_dict(self) -> dict:
         """Return agent state for checkpointing"""
