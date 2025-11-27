@@ -1,4 +1,5 @@
-# utils/seed.py
+# utils/seed.py (last update : 27/11/2025)
+
 import os, random, numpy as np, torch
 
 def set_seed(seed: int, torch_deterministic: bool = True):
