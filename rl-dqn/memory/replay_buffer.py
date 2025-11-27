@@ -1,4 +1,5 @@
-# memory/replay_buffer.py
+# memory/replay_buffer.py (last update by selim, 27/11/2025)
+
 from __future__ import annotations
 import numpy as np
 import torch
@@ -13,10 +14,10 @@ class ReplayBuffer:
     def __init__(self, capacity: int, obs_shape: tuple[int,int,int], device : str = "cpu"):
         self.capacity = int(capacity)
         self.device = device
-        self.idx = 0 #write pointer
+        self.idx = 0
         self.full = False # has wrapped around at least once
 
-        # Pre-allocate memory
+        # memory pre-allocation
         self.obs      = np.empty((self.capacity, *obs_shape), dtype=np.uint8)   # (N,H,W,C)
         self.next_obs = np.empty((self.capacity, *obs_shape), dtype=np.uint8)   # (N,H,W,C)
         self.actions  = np.empty((self.capacity,), dtype=np.int64)              # (N,)
