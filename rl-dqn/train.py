@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# train.py
+# train.py (last update : 27/11/2025)
+
 import argparse
 import time
 import yaml
@@ -20,11 +21,10 @@ from utils.save_run_info import save_run_info
 def parse_args():
     p = argparse.ArgumentParser(description="Train DQN on Atari")
     
-    # Config file
     p.add_argument("--config", type=str, default="configs/dqn_breakout.yaml",
                    help="Path to YAML config file")
     
-    # CLI overrides (optional)
+    # CLI overrides
     p.add_argument("--env_id", type=str, default=None)
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--total_steps", type=int, default=None)
@@ -60,7 +60,6 @@ def build_run_dir(runs_dir: str, env_id: str, seed: int, resume_path: str = None
 def main():
     args = parse_args()
     
-    # Load YAML config
     cfg_yaml = load_yaml(args.config)
     
     # Merge YAML + CLI (CLI takes precedence)
@@ -71,11 +70,10 @@ def main():
     eval_episodes = args.eval_episodes or _get_nested(cfg_yaml, "train", "eval_episodes", default=30)
     save_interval = args.save_interval or _get_nested(cfg_yaml, "train", "save_interval", default=250_000)
     
-    # Set global seed
-    set_seed(seed)
+    set_seed(seed) #set global seed 
     
     # Create environment to get observation shape
-    env = make_atari_env(env_id, training=True, full_action_space=False)
+    env = make_atari_env(env_id, training=True)
     obs, info = env.reset(seed=seed)
     obs_shape = env.observation_space.shape
     n_actions = env.action_space.n
@@ -208,7 +206,7 @@ def main():
         if agent.step_count % eval_interval == 0 or agent.step_count == total_steps:
             print(f"\n📊 Evaluating at step {agent.step_count:,}...")
             eval_stats = evaluate(
-                env_fn=lambda: make_atari_env(env_id, training=False, full_action_space=False),
+                env_fn=lambda: make_atari_env(env_id, training=False),
                 agent=agent,
                 num_episodes=eval_episodes,
                 epsilon_eval=cfg.eval_epsilon,  # If issues: Use 0.0 for greedy evaluation
