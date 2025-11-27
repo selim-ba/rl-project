@@ -1,4 +1,5 @@
-# utils/config.py
+# utils/config.py (last update : 27/11/2025)
+
 from typing import Any, Dict
 import yaml
 from agents.dqn import DQNConfig
