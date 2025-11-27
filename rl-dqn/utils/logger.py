@@ -1,11 +1,11 @@
-# utils/logger.py - FIXED VERSION
+# utils/logger.py (last update : 27/11/2025)
+
 from __future__ import annotations
 import csv
 import os
 import time
 from pathlib import Path
 from typing import Dict, Any
-
 
 class CSVLogger:
     """Simple CSV logger that accumulates training, episode, and eval scalars"""
