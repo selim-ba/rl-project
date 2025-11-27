@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# eval.py
+# eval.py (last update : 27/11/2025)
+
 import argparse
 import os
 from datetime import datetime
@@ -18,32 +19,26 @@ def make_eval_env_with_video(
     seed: int,
     run_name: str | None = None,
     every_ep: bool = True,
-    full_action_space: bool | None = None,
-    sticky_action_prob: float | None = None,
-    name_suffix: str = "",                  # <— NEW: ensures unique filenames
+    name_suffix: str = "",  
 ):
     """Build Atari env for evaluation with video recording."""
-    # Unique run name
     if run_name is None:
         env_tag = env_id.replace("/", "_").replace("-", "_")
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         run_name = f"{env_tag}_seed{seed}_{timestamp}"
 
-    # one folder per run; multiple videos inside it
+    # one folder per run, multiple videos inside it
     video_dir = os.path.join(out_dir, "videos", run_name)
     os.makedirs(video_dir, exist_ok=True)
 
-    # Use the requested action space (do not hard-code False)
+    # Use the requested action space
     env = make_atari_env(
         env_id,
         training=False,
         render_mode="rgb_array",
-        full_action_space=bool(full_action_space),
-        sticky_action_prob=sticky_action_prob,
     )
 
     # Record all episodes (or every 10th) for THIS env instance
-    # name_prefix gets a unique suffix so files don't overwrite
     safe_env_id = env_id.replace("/", "_").replace("-", "_")
     prefix = f"{safe_env_id}_seed{seed}{('_' + name_suffix) if name_suffix else ''}"
 
@@ -95,12 +90,8 @@ def main():
 
     # action-space alignment
     expected_n_actions = cfg.n_actions
-    #full_action_space = True if expected_n_actions >= 10 else False
-    full_action_space = not args.minimal_actions
-    sticky_prob = 0.0 if args.non_sticky else None
 
-
-    tmp = make_atari_env(args.env_id, training=False, full_action_space=full_action_space)
+    tmp = make_atari_env(args.env_id, training=False)
     try:
         assert tmp.action_space.n == expected_n_actions, (
             f"Action-space mismatch: env={tmp.action_space.n} vs agent={expected_n_actions}. "
@@ -109,21 +100,19 @@ def main():
     finally:
         tmp.close()
 
-    # --- Ensure each env instance (if evaluate creates many) has a unique video name ---
+    # Ensure each env instance (if evaluate creates many) has a unique video name
     ep_counter = itertools.count()   # 0,1,2,...
 
     def env_fn():
         ep_idx = next(ep_counter)
-        # record_all=True -> record episode 0 for this env (unique name), so you still get 1 file per eval episode
+        # record_all=True -> record episode 0 for this env (unique name)
         return make_eval_env_with_video(
             args.env_id,
             args.out_dir,
             seed=args.seed,
             run_name=args.run_name,
             every_ep=args.record_all,
-            full_action_space=full_action_space,
-            sticky_action_prob=sticky_prob,
-            name_suffix=f"ep{ep_idx:03d}",   # <— UNIQUE per env instance
+            name_suffix=f"ep{ep_idx:03d}", 
         )
 
     print(f"🎮 Evaluating {args.env_id} for {args.episodes} episodes...")
@@ -144,7 +133,6 @@ def main():
         f"  Mean Episode Length: {results['eval_len_mean']:.1f}\n"
         f"🎥 Videos saved in: {os.path.join(args.out_dir, 'videos', args.run_name)}"
     )
-
 
 if __name__ == "__main__":
     main()
