@@ -1,4 +1,5 @@
-# utils/save_run_info.py
+# utils/save_run_info.py (last update : 27/11/2025)
+
 """
 To save comprehensive run information including:
 - Training configuration (from YAML)
@@ -6,6 +7,7 @@ To save comprehensive run information including:
 - Command-line arguments
 - Hyperparameters
 """
+
 from __future__ import annotations
 import sys
 import platform
