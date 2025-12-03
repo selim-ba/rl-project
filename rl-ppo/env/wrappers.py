@@ -1,8 +1,6 @@
-# env/wrappers.py
-"""
-Atari preprocessing wrappers following the Nature DQN paper.
-Reference: https://www.nature.com/articles/nature14236
-"""
+# env/wrappers.py (last update 03/12/2025)
+
+
 import cv2
 import numpy as np
 import ale_py  # version 0.11.2
