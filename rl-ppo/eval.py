@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# eval.py — Evaluate a trained PPO agent and (optionally) record videos
+# eval.py (Last update 03/12/2025)
+
 import argparse
 import os
 from datetime import datetime
@@ -68,6 +69,7 @@ def make_eval_env_with_video(
         render_mode="rgb_array",
         full_action_space=full_action_space,
         sticky_action_prob=sticky_action_prob,
+        channel_first=True,
     )
 
     safe_env_id = env_id.replace("/", "_").replace("-", "_")
@@ -124,7 +126,7 @@ def main():
     full_action_space = not args.minimal_actions
     sticky_prob = 0.0 if args.non_sticky else None
 
-    tmp = make_atari_env(args.env_id, training=False, full_action_space=full_action_space)
+    tmp = make_atari_env(args.env_id, training=False, full_action_space=full_action_space,channel_first=True,)
     try:
         assert tmp.action_space.n == expected_n_actions, (
             f"Action-space mismatch: env={tmp.action_space.n} vs agent={expected_n_actions}. "
