@@ -1,4 +1,5 @@
-# agents/ppo.py — PPO agent (Nature-CNN for Atari) with deterministic eval
+# agents/ppo.py (last update 03/12/2025)
+
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple, Dict, Any, Optional
@@ -11,7 +12,7 @@ import torch.nn.functional as F
 
 @dataclass
 class PPOConfig:
-    obs_shape: Tuple[int, int, int]  # (H, W, C)
+    obs_shape: Tuple[int, int, int]  # (C, H, W)
     n_actions: int
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -48,18 +49,17 @@ class NatureCNN(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    """Actor-Critic network with shared backbone"""
+    """Actor-Critic network with shared backbone (expects CHW)"""
     def __init__(self, obs_shape, n_actions):
         super().__init__()
-        C = obs_shape[-1]
+        C, H, W = obs_shape               # CHW
         self.backbone = NatureCNN(in_channels=C)
         self.policy = nn.Linear(512, n_actions)
         self.value = nn.Linear(512, 1)
 
     def forward(self, x: torch.Tensor):
-        # x: (N, H, W, C) uint8 -> float32 in [0,1]
-        x = x.float() / 255.0
-        x = x.permute(0, 3, 1, 2).contiguous()
+        # x: (N, C, H, W) uint8 -> float32 in [0,1]
+        x = x.float() / 255.0             # no permute!
         feat = self.backbone(x)
         logits = self.policy(feat)
         value = self.value(feat).squeeze(-1)
