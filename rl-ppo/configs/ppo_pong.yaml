@@ -1,0 +1,42 @@
+# configs/ppo_pong.yaml
+
+env_id: ALE/Pong-v5
+seed: 42
+
+train:
+  n_envs: 8              # Number of parallel actors
+  n_steps: 128           # Horizon (T) - steps per rollout per env
+  total_steps: 10000000   # Total environment steps (Pong learns faster than Breakout)
+  eval_interval: 100000  # Evaluate every 100k steps
+  eval_episodes: 20     # Number of episodes per evaluation
+  save_interval: 200000  # Save checkpoint every 200k steps
+
+agent:
+  # Core PPO hyperparameters (from paper Table 5)
+  gamma: 0.99            # Discount factor
+  gae_lambda: 0.95       # GAE parameter λ
+  n_epochs: 3            # Number of optimization epochs per rollout (paper: 3)
+  batch_size: 256        # Minibatch size (32 × 8 = 256)
+  
+  # Clipping and regularization
+  clip_range: 0.1        # Initial clipping parameter ε (will be annealed to 0)
+  ent_coef: 0.01         # Entropy coefficient c2 (paper: 0.01)
+  vf_coef: 1.0           # Value function coefficient c1 (paper: 1.0)
+  max_grad_norm: 0.5     # Gradient clipping
+  
+  # Learning rate
+  lr: 2.5e-4             # Initial Adam learning rate (will be annealed to 0)
+  
+  # Annealing (critical for good performance)
+  anneal_lr: true        # Enable learning rate annealing
+  anneal_clip: true      # Enable clip range annealing
+  
+  # Environment settings
+  clip_rewards: true     # Clip rewards to {-1, 0, +1} for training
+  full_action_space: false  # Use minimal action set (4 actions for Pong)
+  sticky_action_prob: null  # No sticky actions (v5 default)
+
+# Early stopping (optional)
+early_stopping:
+  enabled: false
+  target_kl: 0.01
