@@ -1,4 +1,5 @@
-# memory/rollout_buffer.py — storage for PPO rollouts with GAE
+# memory/rollout_buffer.py (last update 03/12/2025)
+
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
