@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# train.py — Train PPO on Atari (Breakout)
+# train.py (Last update 03/12/2025)
+
 import argparse
 import time
 import yaml
@@ -77,7 +78,7 @@ def make_vec_env(env_id: str, n_envs: int, seed: int, clip_rewards: bool = True,
                 env_id,
                 training=clip_rewards,
                 render_mode=None,
-                channel_first=False,  # HWC uint8 frames
+                channel_first=True,  # HWC uint8 frames
                 seed=env_seed,
                 full_action_space=full_action_space,
                 sticky_action_prob=sticky_action_prob,
@@ -126,7 +127,7 @@ def main():
     vf_coef = float(_get_nested(agent_cfg_yaml, "vf_coef", default=0.5))
     max_grad_norm = float(_get_nested(agent_cfg_yaml, "max_grad_norm", default=0.5))
     lr = float(_get_nested(agent_cfg_yaml, "lr", default=2.5e-4))
-    n_epochs = int(_get_nested(agent_cfg_yaml, "n_epochs", default=4))
+    n_epochs = int(_get_nested(agent_cfg_yaml, "n_epochs", default=3))  # FIXED: default now 3 (paper value)
     batch_size = int(_get_nested(agent_cfg_yaml, "batch_size", default=256))
     clip_rewards = bool(_get_nested(agent_cfg_yaml, "clip_rewards", default=True))
     full_action_space = bool(_get_nested(agent_cfg_yaml, "full_action_space", default=False))
@@ -141,7 +142,7 @@ def main():
     device = _device()
 
     # Build a single env to probe shapes via wrappers
-    probe_env = make_atari_env(env_id, training=clip_rewards, full_action_space=full_action_space)
+    probe_env = make_atari_env(env_id, training=clip_rewards, full_action_space=full_action_space,channel_first=True,)
     probe_obs, _ = probe_env.reset(seed=seed)
     obs_shape = probe_obs.shape  # HWC
     n_actions = probe_env.action_space.n
@@ -174,7 +175,8 @@ def main():
             "approx_kl": None, "clipfrac": None, "fps": None,
             "episode": 0, "episode_return": None, "episode_length": None,
             "eval_return_mean": None, "eval_return_std": None,
-            "eval_return_min": None, "eval_return_max": None, "eval_len_mean": None
+            "eval_return_min": None, "eval_return_max": None, "eval_len_mean": None,
+            "learning_rate": None, "clip_range": None
         })
 
     # Create vectorized environments
@@ -208,8 +210,9 @@ def main():
         meta = agent.load(args.resume, device=device)
         global_step = int(meta.get("global_step", 0))
         update_count = int(meta.get("updates", 0))
-        last_checkpoint_step = (global_step // save_interval) * save_interval
-        last_eval_step = (global_step // eval_interval) * eval_interval
+        # Initialize tracking from resume point
+        last_checkpoint_step = global_step
+        last_eval_step = global_step
         print(f"↩️  Resumed from {args.resume} (step={global_step:,}, updates={update_count:,})")
 
     rb = RolloutBuffer(n_steps=n_steps, n_envs=n_envs, obs_shape=obs.shape[1:], dtype=torch.uint8)
@@ -232,7 +235,8 @@ def main():
     print(f"📂 Run directory: {run_dir}")
     print(f"🎯 Total steps: {total_steps:,}")
     print(f"🔄 Starting from step: {global_step:,}")
-    print(f"📊 LR annealing: {anneal_lr}, Clip annealing: {anneal_clip}\n")
+    print(f"📊 LR annealing: {anneal_lr}, Clip annealing: {anneal_clip}")
+    print(f"🔧 n_epochs: {n_epochs}, batch_size: {batch_size}\n")
 
     while global_step < total_steps:
         # Collect a rollout of length n_steps
@@ -282,8 +286,10 @@ def main():
             
             if global_step % 50_000 == 0:
                 now = time.time()
-                fps_rough = (global_step - last_report_step) / max(now - last_report_t, 1e-6)
-                print(f"… step {global_step:,} | fps≈{fps_rough:.0f}")
+                elapsed = now - t0
+                progress = global_step / total_steps
+                eta = (elapsed / progress) * (1 - progress) if progress > 0 else 0
+                print(f"… step {global_step:,}/{total_steps:,} ({progress*100:.1f}%) | ETA: {eta/3600:.1f}h")
 
         # Bootstrap & compute GAE
         with torch.no_grad():
@@ -326,12 +332,12 @@ def main():
                   f"kl {approx_kl:.4f} clip {clipfrac:.2f} | "
                   f"lr {current_lr:.2e} clip_ε {current_clip:.3f}")
 
-        # Periodic evaluation (fixed to evaluate at exact intervals)
-        eval_step = (global_step // eval_interval) * eval_interval
-        if eval_step > last_eval_step and eval_step > 0:
+        # FIXED: Periodic evaluation (uses threshold check to avoid duplicates)
+        if global_step >= last_eval_step + eval_interval:
+            eval_step = global_step
             print(f"\n📊 Evaluating at step {eval_step:,}...")
             eval_stats = evaluate(
-                env_fn=lambda: make_atari_env(env_id, training=False, full_action_space=full_action_space),
+                env_fn=lambda: make_atari_env(env_id, training=False, full_action_space=full_action_space,channel_first=True,),
                 agent=agent,
                 num_episodes=eval_episodes,
                 seed=seed,
@@ -341,9 +347,9 @@ def main():
             print(f"   Min/Max: [{eval_stats['eval_return_min']:.1f}, {eval_stats['eval_return_max']:.1f}]\n")
             last_eval_step = eval_step
 
-        # Periodic checkpoint (fixed to save at exact intervals)
-        checkpoint_step = (global_step // save_interval) * save_interval
-        if checkpoint_step > last_checkpoint_step and checkpoint_step > 0:
+        # FIXED: Periodic checkpoint (uses threshold check to avoid duplicates)
+        if global_step >= last_checkpoint_step + save_interval:
+            checkpoint_step = global_step
             ckpt_path = run_dir / f"ckpt_{checkpoint_step}.pt"
             agent.save(
                 path=str(ckpt_path),
@@ -373,7 +379,7 @@ def main():
     # Final evaluation
     print(f"\n📊 Running final evaluation...")
     final_eval_stats = evaluate(
-        env_fn=lambda: make_atari_env(env_id, training=False, full_action_space=full_action_space),
+        env_fn=lambda: make_atari_env(env_id, training=False, full_action_space=full_action_space,channel_first=True,),
         agent=agent,
         num_episodes=eval_episodes,
         seed=seed,
