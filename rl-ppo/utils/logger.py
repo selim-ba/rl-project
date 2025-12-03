@@ -1,4 +1,5 @@
-# utils/logger.py - FIXED VERSION
+# utils/logger.py  (last update 03/12/2025)
+
 from __future__ import annotations
 import csv
 import os
