@@ -41,10 +41,3 @@ agent:
 early_stopping:
   enabled: false         # Set to true to enable
   target_kl: 0.01       # Stop policy updates if mean KL divergence > threshold
-
-# Notes:
-# 1. The paper anneals BOTH learning rate and clip range linearly from initial value to 0
-# 2. This is critical for good performance - without it, training is suboptimal
-# 3. Value function coefficient is 1.0 in the paper, not 0.5
-# 4. Using 3 epochs (not 4) matches the paper exactly
-# 5. Expected performance: 300-400+ average reward on Breakout after 10M steps
