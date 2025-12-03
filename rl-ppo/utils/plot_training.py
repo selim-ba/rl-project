@@ -1,4 +1,5 @@
-# utils/plot_training.py - PPO-FOCUSED VERSION
+# utils/plot_training.py (last update 03/12/2025)
+
 from __future__ import annotations
 import os
 import sys
