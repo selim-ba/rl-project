@@ -1,9 +1,10 @@
-# utils/eval_utils.py
+# utils/eval_utils.py (last update 03/12/2025)
+
 from __future__ import annotations
 import numpy as np
 
 
-def evaluate(agent, env_fn, num_episodes: int = 10, seed: int = None, epsilon_eval: float = None) -> dict:
+def evaluate(agent, env_fn, num_episodes, epsilon_eval=None, seed=None, **kwargs):
     """
     Evaluate agent over multiple episodes with deterministic policy.
     
