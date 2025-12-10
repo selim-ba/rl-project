@@ -22,3 +22,4 @@
 |------------|------------|------------|
 | DeepSeek's GRPO - RL for LLMs  | [Video](https://www.youtube.com/watch?v=xT4jxQUl0X8)   | NaN |
 | GRPO Optimization  | [Blog post](https://cameronrwolfe.substack.com/p/grpo)   | NaN |
+| RL from human feedback  | [Article](https://rlhfbook.com/c/11-policy-gradients.html#group-relative-policy-optimization)   | NaN |
