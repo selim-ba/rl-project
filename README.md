@@ -21,3 +21,4 @@
 | Name | Type | Comment |
 |------------|------------|------------|
 | DeepSeek's GRPO - RL for LLMs  | [Video](https://www.youtube.com/watch?v=xT4jxQUl0X8)   | NaN |
+| GRPO Optimization  | [Blog post]([https://www.youtube.com/watch?v=xT4jxQUl0X8](https://cameronrwolfe.substack.com/p/grpo))   | NaN |
