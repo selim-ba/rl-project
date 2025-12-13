@@ -16,8 +16,16 @@
 | PyTorch : RL (DQN) Tutorial | [Blog post](https://docs.pytorch.org/tutorials/intermediate/reinforcement_q_learning.html#dqn-algorithm) | NaN |
 | Steve Brunton's RL videos | [Youtube playlist](https://www.youtube.com/watch?v=0MNVhXEX9to&list=PLMrJAkhIeNNQe1JXNvaFvURxGY4gE9k74) | 8 videos (~3h) |
 
+# 3 - PPO
+| Name | Type | Comment |
+|------------|------------|------------|
+| PPO Algorithms  | [Research paper](https://arxiv.org/pdf/1707.06347)   | NaN |
+| 37 implementation details of PPO  | [Blog Post](https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/)   | NaN |
+| PPO Explained by Jonathan Hui  | [Blog Post](https://jonathan-hui.medium.com/rl-proximal-policy-optimization-ppo-explained-77f014ec3f12)   | Medium |
+| PPO Explained by Thomas Simonini  | [Blog Post](https://huggingface.co/blog/deep-rl-ppo)   | HuggingFace |
 
-# X - GRPO
+
+# 3 - GRPO
 | Name | Type | Comment |
 |------------|------------|------------|
 | DeepSeek's GRPO - RL for LLMs  | [Video](https://www.youtube.com/watch?v=xT4jxQUl0X8)   | NaN |
